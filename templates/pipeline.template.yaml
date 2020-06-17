@@ -19,6 +19,12 @@ Parameters:
     AllowedPattern: (\d{12}|^$)
     ConstraintDescription: Must be an AWS account ID
     Default: '159527342995'
+  UATAwsAccountId:
+    Description: AWS account ID for UAT account
+    Type: String
+    AllowedPattern: (\d{12}|^$)
+    ConstraintDescription: Must be an AWS account ID
+    Default: '159527342995'
   ProdAwsAccountId:
     Description: AWS account ID for production account
     Type: String
@@ -51,6 +57,9 @@ Parameters:
   SecretArnDev:
     Description: ARN for Secrets Manager secret for dev
     Type: String
+  SecretArnUAT:
+    Description: ARN for Secrets Manager secret for UAT
+    Type: String
   SecretArnProd:
     Description: ARN for Secrets Manager secret for production
     Type: String
@@ -81,6 +90,19 @@ Resources:
           - IsProdStage
           - !Sub ${AppName}-dev
           - !Sub ${AppName}-dev-${Suffix}
+          
+  DynamicPipelineCleanupUAT:
+    Type: "AWS::CloudFormation::CustomResource"
+    Version: '1.0'
+    Properties:
+      ServiceToken: !Ref DynamicPipelineCleanupLambdaArn
+      RoleArn: !Sub arn:aws:iam::${UATAwsAccountId}:role/CodePipelineServiceRole-${AWS::Region}-${UATAwsAccountId}-UAT
+      Region: !Ref AWS::Region
+      StackName:
+        !If
+          - IsProdStage
+          - !Sub ${AppName}-UAT
+          - !Sub ${AppName}-UAT-${Suffix}
 
   DynamicPipelineCleanupProd:
     Condition: IsProdStage
@@ -179,6 +201,74 @@ Resources:
                 Version: '1'
               Configuration:
                 ProjectName: !Ref SmokeTestDevProject
+             - Name: Build
+          Actions:
+            - Name: Build
+              RunOrder: 1
+              InputArtifacts:
+                - Name: Source
+              ActionTypeId:
+                Category: Build
+                Provider: CodeBuild
+                Owner: AWS
+                Version: '1'
+              Configuration:
+                ProjectName: !Ref BuildProject
+              OutputArtifacts:
+                - Name: BuildArtifact
+        - Name: DeployToUAT
+          Actions:
+            - Name: CreateChangeSet
+              RunOrder: 1
+              InputArtifacts:
+                - Name: BuildArtifact
+              ActionTypeId:
+                Category: Deploy
+                Provider: CloudFormation
+                Owner: AWS
+                Version: '1'
+              Configuration:
+                ActionMode: CHANGE_SET_REPLACE
+                Capabilities: CAPABILITY_IAM
+                ChangeSetName: !Sub ${AppName}-change-set-${Suffix}
+                RoleArn: !Sub arn:aws:iam::${UATAwsAccountId}:role/CodePipelineDeploymentRole-${AWS::Region}-${UATAwsAccountId}-UAT
+                StackName:
+                  !If
+                    - IsProdStage
+                    - !Sub ${AppName}-UAT
+                    - !Sub ${AppName}-UAT-${Suffix}
+                TemplatePath: BuildArtifact::sample-transformed.yaml
+                TemplateConfiguration: BuildArtifact::sample-configuration-dev.json
+              RoleArn: !Sub arn:aws:iam::${UATAwsAccountId}:role/CodePipelineServiceRole-${AWS::Region}-${UATAwsAccountId}-UAT
+            - Name: DeployChangeSet
+              RunOrder: 2
+              ActionTypeId:
+                Category: Deploy
+                Provider: CloudFormation
+                Owner: AWS
+                Version: '1'
+              Configuration:
+                ActionMode: CHANGE_SET_EXECUTE
+                Capabilities: CAPABILITY_IAM
+                ChangeSetName: !Sub ${AppName}-change-set-${Suffix}
+                RoleArn: !Sub arn:aws:iam::${UATAwsAccountId}:role/CodePipelineDeploymentRole-${AWS::Region}-${UATAwsAccountId}-UAT
+                StackName:
+                  !If
+                    - IsProdStage
+                    - !Sub ${AppName}-UAT
+                    - !Sub ${AppName}-UAT-${Suffix}
+              RoleArn: !Sub arn:aws:iam::${UATAwsAccountId}:role/CodePipelineServiceRole-${AWS::Region}-${UATAwsAccountId}-UAT
+            - Name: SmokeTest
+              RunOrder: 4
+              InputArtifacts:
+                - Name: Source
+              ActionTypeId:
+                Category: Build
+                Provider: CodeBuild
+                Owner: AWS
+                Version: '1'
+              Configuration:
+                ProjectName: !Ref SmokeTestUATProject
         - !If
           - IsProdStage
           - Name: DeployToProd
@@ -295,6 +385,31 @@ Resources:
           - Name: ROLE_ARN
             Type: PLAINTEXT
             Value: !Sub arn:aws:iam::${DevAwsAccountId}:role/CodePipelineServiceRole-${AWS::Region}-${DevAwsAccountId}-dev
+      ServiceRole: !Ref PipelineServiceRoleArn
+      
+  SmokeTestUATProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Artifacts:
+        Type: CODEPIPELINE
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: buildspec.smoketest.yaml
+      Environment:
+        ComputeType: BUILD_GENERAL1_SMALL
+        Type: LINUX_CONTAINER
+        Image: !Ref BuildImageName
+        EnvironmentVariables:
+          - Name: STACK_NAME
+            Type: PLAINTEXT
+            Value:
+              !If
+                - IsProdStage
+                - !Sub ${AppName}-UAT
+                - !Sub ${AppName}-UAT-${Suffix}
+          - Name: ROLE_ARN
+            Type: PLAINTEXT
+            Value: !Sub arn:aws:iam::${UATAwsAccountId}:role/CodePipelineServiceRole-${AWS::Region}-${UATAwsAccountId}-UAT
       ServiceRole: !Ref PipelineServiceRoleArn
 
   SmokeTestProdProject:
