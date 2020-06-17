@@ -15,6 +15,12 @@ Parameters:
     AllowedPattern: (\d{12}|^$)
     ConstraintDescription: Must be an AWS account ID
     Default: '159527342995'
+  UATAwsAccountId:
+    Description: AWS account ID for UAT account
+    Type: String
+    AllowedPattern: (\d{12}|^$)
+    ConstraintDescription: Must be an AWS account ID
+    Default: '159527342995'
   ProdAwsAccountId:
     Description: AWS account ID for production account
     Type: String
@@ -47,6 +53,7 @@ Parameters:
 Conditions:
   AddDevAccountPermissions: !Not [!Equals [ !Ref DevAwsAccountId, '' ]]
   AddProdAccountPermissions: !Not [!Equals [ !Ref ProdAwsAccountId, '' ]]
+  AddUATAccountPermissions: !Not [!Equals [ !Ref UATAwsAccountId, '' ]]
 
 Resources:
   SecretDev:
@@ -64,6 +71,21 @@ Resources:
       Tags:
         - Key: Stage
           Value: dev
+  SecretUAT:
+    Condition: AddUATAccountPermissions
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Description: Secret to define sensitive data for application in child accounts (UAT)
+      KmsKeyId: !GetAtt SecretsManagerKey.Arn
+      GenerateSecretString:
+        SecretStringTemplate: '{"username": "sample-user"}'
+        GenerateStringKey: "password"
+        PasswordLength: 30
+        ExcludeCharacters: '"@/\'
+      Name: !Sub sample-secret-${AWS::Region}-${AWS::AccountId}-UAT
+      Tags:
+        - Key: Stage
+          Value: UAT
   SecretProd:
     Condition: AddProdAccountPermissions
     Type: AWS::SecretsManager::Secret
@@ -92,6 +114,25 @@ Resources:
             Principal:
               AWS:
                 - !Sub arn:aws:iam::${DevAwsAccountId}:role/SampleLambdaRole-${AWS::Region}-${DevAwsAccountId}-dev
+            Action:
+              - secretsmanager:GetSecretValue
+            Resource: '*'
+            Condition:
+              ForAnyValue:StringEquals: # Only the latest secret can be retrieved (per best practices)
+                secretsmanager:VersionStage: AWSCURRENT
+                
+  SecretPolicyDev:
+    Condition: AddUATAccountPermissions
+    Type: AWS::SecretsManager::ResourcePolicy
+    Properties:
+      SecretId: !Ref SecretUAT
+      ResourcePolicy:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS:
+                - !Sub arn:aws:iam::${UATAwsAccountId}:role/SampleLambdaRole-${AWS::Region}-${UATAwsAccountId}-UAT
             Action:
               - secretsmanager:GetSecretValue
             Resource: '*'
@@ -134,13 +175,17 @@ Resources:
             Action:
               - kms:*
             Resource: '*'
-          - Sid: Allow the dev and prod accounts to the key
+          - Sid: Allow the dev, UAT and prod accounts to the key
             Effect: Allow
             Principal:
               AWS:
                 - !If
                   - AddDevAccountPermissions
                   - !Sub arn:aws:iam::${DevAwsAccountId}:role/SampleLambdaRole-${AWS::Region}-${DevAwsAccountId}-dev
+                  - !Ref AWS::NoValue
+                - !If
+                  - AddUATAccountPermissions
+                  - !Sub arn:aws:iam::${UATAwsAccountId}:role/SampleLambdaRole-${AWS::Region}-${UATAwsAccountId}-UAT
                   - !Ref AWS::NoValue
                 - !If
                   - AddProdAccountPermissions
@@ -217,6 +262,13 @@ Outputs:
       !If
         - AddDevAccountPermissions
         - !Ref SecretDev
+        - ''
+  SecretArnUAT:
+    Description: UAT secret ARN
+    Value:
+      !If
+        - AddUATAccountPermissions
+        - !Ref SecretUAT
         - ''
   SecretArnProd:
     Description: Prod secret ARN
