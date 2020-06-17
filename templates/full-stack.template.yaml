@@ -1,6 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: >
-  (qs-1ph8nehai) 
   Serverless CICD Quick Start
   Master template refers to sub-templates
 
@@ -18,6 +17,8 @@ Metadata:
           - DevChildAccountRoleName
           - ProdAwsAccountId
           - ProdChildAccountRoleName
+          - UATAwsAccountId
+          - UATChildAccountRoleName          
       - Label:
           default: Pipeline configuration
         Parameters:
@@ -34,6 +35,10 @@ Metadata:
         default: Development account ID (child)
       DevChildAccountRoleName:
         default: Development account role name
+      UATAwsAccountId:
+        default: UAT account ID (child)
+      UATChildAccountRoleName:
+        default: UAT account role name
       ProdAwsAccountId:
         default: Production account ID (child)
       ProdChildAccountRoleName:
@@ -48,6 +53,11 @@ Metadata:
 Parameters:
   DevAwsAccountId:
     Description: AWS account ID for development account
+    Type: String
+    AllowedPattern: (\d{12}|^$)
+    ConstraintDescription: Must be an AWS account ID
+  UATAwsAccountId:
+    Description: AWS account ID for UAT account
     Type: String
     AllowedPattern: (\d{12}|^$)
     ConstraintDescription: Must be an AWS account ID
@@ -80,6 +90,10 @@ Parameters:
     Description: Name of role created by ChildAccountRole template in production account
     Type: String
     Default: ChildAccountRole
+  UATChildAccountRoleName:
+    Description: Name of role created by ChildAccountRole template in UAT account
+    Type: String
+    Default: ChildAccountRole
   DevChildAccountRoleName:
     Description: Name of role created by ChildAccountRole template in development account
     Type: String
@@ -92,6 +106,7 @@ Resources:
       Parameters:
         DevAwsAccountId: !Ref DevAwsAccountId
         ProdAwsAccountId: !Ref ProdAwsAccountId
+        UATAwsAccountId: !Ref UATAwsAccountId
       TemplateURL: !Sub https://${QSS3BucketName}.s3.amazonaws.com/${QSS3KeyPrefix}templates/account.template.yaml
       TimeoutInMinutes: 60
 
@@ -101,6 +116,7 @@ Resources:
       Parameters:
         DevAwsAccountId: !Ref DevAwsAccountId
         ProdAwsAccountId: !Ref ProdAwsAccountId
+        UATAwsAccountId: !Ref UATAwsAccountId
         PipelineServiceRoleArn: !GetAtt AccountStack.Outputs.PipelineServiceRoleArn
         AppName: !Ref AppName
         QSS3BucketName: !Ref QSS3BucketName
@@ -118,6 +134,17 @@ Resources:
         QuickStartStackMakerLambda: !GetAtt LambdaStack.Outputs.QuickStartStackMakerLambda
         Stage: dev
         ChildAccountRoleName: !Ref DevChildAccountRoleName
+      TemplateURL: !Sub https://${QSS3BucketName}.s3.amazonaws.com/${QSS3KeyPrefix}templates/cross-account.template.yaml
+      TimeoutInMinutes: 60
+      
+  CrossAccountStackUAT:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      Parameters:
+        AwsAccountId: !Ref UATAwsAccountId
+        QuickStartStackMakerLambda: !GetAtt LambdaStack.Outputs.QuickStartStackMakerLambda
+        Stage: UAT
+        ChildAccountRoleName: !Ref UATChildAccountRoleName
       TemplateURL: !Sub https://${QSS3BucketName}.s3.amazonaws.com/${QSS3KeyPrefix}templates/cross-account.template.yaml
       TimeoutInMinutes: 60
 
@@ -141,6 +168,7 @@ Resources:
       Parameters:
         DevAwsAccountId: !Ref DevAwsAccountId
         ProdAwsAccountId: !Ref ProdAwsAccountId
+        UATAwsAccountId: !Ref UATAwsAccountId
         AppName: !Ref AppName
         DynamicPipelineMakerLambdaArn: !GetAtt LambdaStack.Outputs.DynamicPipelineMakerLambda
         CodecommitCredentialsLambdaArn: !GetAtt LambdaStack.Outputs.CodecommitCredentialsLambda
@@ -158,6 +186,7 @@ Resources:
       Parameters:
         DevAwsAccountId: !Ref DevAwsAccountId
         ProdAwsAccountId: !Ref ProdAwsAccountId
+        UATAwsAccountId: !Ref UATAwsAccountId
         AppName: !Ref AppName
         DynamicPipelineCleanupLambdaArn: !GetAtt LambdaStack.Outputs.DynamicPipelineCleanupLambda
         BuildImageName: !Ref BuildImageName
