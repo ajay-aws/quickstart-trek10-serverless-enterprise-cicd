@@ -357,6 +357,8 @@ Resources:
             Value: !Ref SecretArnDev
           - Name: SECRET_ARN_PROD
             Value: !Ref SecretArnProd
+          - Name: SECRET_ARN_UAT
+            Value: !Ref SecretArnUAT
           - Name: SECRET_MANAGER_KEY
             Value: !Ref SecretsManagerKey
       ServiceRole: !Ref PipelineServiceRoleArn
