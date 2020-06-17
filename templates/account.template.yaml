@@ -11,6 +11,12 @@ Parameters:
     AllowedPattern: (\d{12}|^$)
     ConstraintDescription: Must be an AWS account ID
     Default: '159527342995'
+  UATAwsAccountId:
+    Description: AWS account ID for UAT account
+    Type: String
+    AllowedPattern: (\d{12}|^$)
+    ConstraintDescription: Must be an AWS account ID
+    Default: '159527342995'
   ProdAwsAccountId:
     Description: AWS account ID for production account
     Type: String
@@ -20,6 +26,7 @@ Parameters:
 
 Conditions:
   AddDevAccountPermissions: !Not [!Equals [ !Ref DevAwsAccountId, '' ]]
+  AddUATAccountPermissions: !Not [!Equals [ !Ref UATAwsAccountId, '' ]]
   AddProdAccountPermissions: !And [!Not [!Equals [ !Ref ProdAwsAccountId, '' ]],
                                    !Not [!Equals [ !Ref DevAwsAccountId, !Ref ProdAwsAccountId  ]]]
 
@@ -65,6 +72,10 @@ Resources:
                 - !If
                   - AddProdAccountPermissions
                   - !Sub arn:aws:iam::${ProdAwsAccountId}:root
+                  - !Ref AWS::NoValue
+                - !If
+                  - AddUATAccountPermissions
+                  - !Sub arn:aws:iam::${UATAwsAccountId}:root
                   - !Ref AWS::NoValue
 
   PipelineServiceRole:
@@ -119,6 +130,7 @@ Resources:
                 Resource:
                   - !Sub arn:aws:iam::${DevAwsAccountId}:role/CodePipelineServiceRole-${AWS::Region}-${DevAwsAccountId}-dev
                   - !Sub arn:aws:iam::${ProdAwsAccountId}:role/CodePipelineServiceRole-${AWS::Region}-${ProdAwsAccountId}-prod
+                  - !Sub arn:aws:iam::${UATAwsAccountId}:role/CodePipelineServiceRole-${AWS::Region}-${UATAwsAccountId}-UAT
               - Resource: '*'
                 Effect: Allow
                 Action:
@@ -184,6 +196,10 @@ Resources:
                 - !If
                   - AddProdAccountPermissions
                   - !Sub arn:aws:iam::${ProdAwsAccountId}:root
+                  - !Ref AWS::NoValue
+                - !If
+                  - AddUATAccountPermissions
+                  - !Sub arn:aws:iam::${UATAwsAccountId}:root
                   - !Ref AWS::NoValue
             Action:
               - kms:Encrypt
@@ -257,7 +273,11 @@ Resources:
                   - AddProdAccountPermissions
                   - !Sub arn:aws:iam::${ProdAwsAccountId}:root
                   - !Ref AWS::NoValue
-
+                - !If
+                  - AddUATAccountPermissions
+                  - !Sub arn:aws:iam::${UATAwsAccountId}:root
+                  - !Ref AWS::NoValue
+                  
 Outputs:
   SamTranslationBucket:
     Description: Bucket used when packaging SAM templates
