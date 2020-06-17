@@ -11,6 +11,11 @@ Parameters:
     Type: String
     AllowedPattern: (\d{12}|^$)
     ConstraintDescription: Must be an AWS account ID
+  UATAwsAccountId:
+    Description: AWS account ID for UAT account
+    Type: String
+    AllowedPattern: (\d{12}|^$)
+    ConstraintDescription: Must be an AWS account ID
   ProdAwsAccountId:
     Description: AWS account ID for production account
     Type: String
@@ -225,6 +230,7 @@ Resources:
             Resource:
               - !Sub arn:aws:iam::${DevAwsAccountId}:role/CodePipelineServiceRole-${AWS::Region}-${DevAwsAccountId}-dev
               - !Sub arn:aws:iam::${ProdAwsAccountId}:role/CodePipelineServiceRole-${AWS::Region}-${ProdAwsAccountId}-prod
+              - !Sub arn:aws:iam::${UATAwsAccountId}:role/CodePipelineServiceRole-${AWS::Region}-${UATAwsAccountId}-UAT
 
   DynamicPipelineCleanupLambda:
     Type: AWS::Lambda::Function
